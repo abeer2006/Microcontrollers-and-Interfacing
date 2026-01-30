@@ -1,0 +1,8 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/abeer-ansari/Downloads/LAB03new/Lab03_new/build/Debug/cmake_install.cmake",
+		"/home/abeer-ansari/Downloads/LAB03new/Lab03_new/build/Debug/cmake/stm32cubemx/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
