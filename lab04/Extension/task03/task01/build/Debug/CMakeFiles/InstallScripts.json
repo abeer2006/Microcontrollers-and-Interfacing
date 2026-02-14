@@ -1,8 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/home/abeer-ansari/Downloads/Microcontrollers-and-Interfacing/lab04/build/Debug/cmake_install.cmake",
-		"/home/abeer-ansari/Downloads/Microcontrollers-and-Interfacing/lab04/build/Debug/cmake/stm32cubemx/cmake_install.cmake"
-	],
-	"Parallel" : false
-}
