@@ -120,9 +120,19 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-    float x = (adc_val*3)/4095.0;
-    myPrintf("ADC Value: %d , Voltage : %0.2f V \r\n", x, adc_val);
-    HAL_Delay(1000);
+
+    // Polling: 
+    HAL_ADC_Start (& hadc1);
+    HAL_ADC_PollForConversion (&hadc1 , HAL_MAX_DELAY );
+
+    uint32_t value = HAL_ADC_GetValue (& hadc1);
+    float x = (value*3)/4095.0;
+
+    myPrintf("ADC Value: %d , Voltage : %0.2f V \r\n", x, value);
+
+    HAL_ADC_Stop (& hadc1);
+    
+    HALHAL_Delay(20); // 20ms delay -> 50 samples per second 
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -416,13 +426,6 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_ADC_ConvCpltCallback ( ADC_HandleTypeDef * hadc) {
- if (hadc ->Instance == ADC1) {
-  adc_val = HAL_ADC_GetValue (hadc);
- // Use adc_val as needed
-
-}}
-
 void myPrintf(const char *fmt, ...)
 {
     char buffer[256]; 
