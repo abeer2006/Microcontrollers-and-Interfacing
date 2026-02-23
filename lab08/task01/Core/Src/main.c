@@ -74,8 +74,7 @@ static void MX_USART2_UART_Init(void);
 uint8_t tx = 0x8F;
 uint8_t rx = 0x00;
 void myPrintf(const char *fmt, ...);
-void HAL_SPI_TxCpltCallback ( SPI_HandleTypeDef *hspi);
-void HAL_SPI_RxCpltCallback ( SPI_HandleTypeDef *hspi);
+
 /* USER CODE END 0 */
 
 /**
@@ -112,10 +111,6 @@ int main(void)
   MX_USB_PCD_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  // HAL_GPIO_WritePin (GPIOE , GPIO_PIN_3 , GPIO_PIN_RESET );
-  // /* USER CODE END 2 */
-  // HAL_SPI_Transmit_IT (&hspi1 , &tx , 1 );
-  //HAL_Delay(1000);
     /* USER CODE BEGIN 3 */
   
   /* Infinite loop */
@@ -127,7 +122,7 @@ int main(void)
     HAL_SPI_Transmit_IT (&hspi1 , &tx , 1 );
     HAL_GPIO_WritePin(GPIOE, GPIO_PIN_13, GPIO_PIN_SET);
     HAL_SPI_Receive_IT (&hspi1 , &rx , 1 );
-      myPrintf("WHO_AM_I: %u \r\n", rx);
+    myPrintf("WHO_AM_I: %u \r\n", rx);
 
     /* USER CODE END WHILE */
 
@@ -395,15 +390,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_SPI_TxCpltCallback ( SPI_HandleTypeDef *hspi){
-  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_13, GPIO_PIN_SET);
-  HAL_SPI_Receive_IT (&hspi1 , &rx , 1 );
-}
 
-void HAL_SPI_RxCpltCallback ( SPI_HandleTypeDef *hspi){
-  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_12, GPIO_PIN_SET);
-  HAL_GPIO_WritePin (GPIOE , GPIO_PIN_3 , GPIO_PIN_SET );
-}
 
 void myPrintf(const char *fmt, ...)
 {
