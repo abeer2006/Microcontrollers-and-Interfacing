@@ -1,63 +1,72 @@
 import serial
 import matplotlib.pyplot as plt
-from drawnow import drawnow
-import time
+from drawnow import *
 
-PORT = '/dev/ttyUSB0'   # change if needed
-BAUD = 115200
-
-# === Auto connect ===
-while True:
-    try:
-        ser = serial.Serial(PORT, BAUD, timeout=1)
-        print("Connected to", PORT)
-        break
-    except:
-        print("Waiting for port...")
-        time.sleep(1)
-
+# === Setup Serial ===
+sinWaveData = serial.Serial('/dev/ttyUSB0', 9600)
 plt.ion()
 
-tempData = []
-timeData = []
+# === Plot Styles to Rotate Through ===
+plot_styles = ['r.-', 'b.-', 'g.-', 'm.-', 'c.-', 'y.-', 'k.-']
+
+# === Data Storage ===
+NUM_SAMPLES = 20
+time_ms = []
 cnt = 0
+all_signals = []  # List of lists. all_signals[0] = i values, all_signals[1] = j values, etc.
+signals = ["Temperature"]
 
-
-def makeFig():
+# === Plotting Function ===
+def makeFig(title, xLabel, yLabel, yLimit, *args):
     plt.clf()
-    plt.title("Live Temperature")
+    plt.title(title)
     plt.grid(True)
-    plt.xlabel("Sample")
-    plt.ylabel("Temperature")
-    plt.plot(timeData, tempData, label="Temp")
-    plt.legend()
+    plt.xlabel(xLabel)
+    plt.ylabel(yLabel)
+    plt.ylim(yLimit[0], yLimit[1])  
 
+    for arg in args:
+        plt.plot(time_ms, arg[0], arg[1], label=arg[2])
 
+    plt.legend(loc='upper left')
+
+# === Main Loop ===
 while True:
+    while sinWaveData.inWaiting() == 0:
+        pass  # Wait for data
+
     try:
-        line = ser.readline().decode(errors="ignore").strip()
 
-        if not line:
-            continue
+        line = sinWaveData.readline().decode().strip()
+        values = line.split(',')
 
-        # case 1 → only temp sent
-        if "," not in line:
-            temp = float(line)
+        # First time: initialize sublists
+        if len(all_signals) != len(values):
+            all_signals = [[] for _ in range(len(values))]
 
-        # case 2 → CSV format (temp first)
-        else:
-            temp = float(line.split(",")[0])
+        # Append each value to its corresponding signal list
+        for i, val in enumerate(values):
+            all_signals[i].append(int(val))
 
-        tempData.append(temp)
-        timeData.append(cnt)
+        time_ms.append(cnt)
         cnt += 1
 
-        drawnow(makeFig)
-        plt.pause(0.001)
+        # Build args for plotting
+        args = []
+        for i, signal in enumerate(all_signals):
+            style = plot_styles[i % len(plot_styles)]
+            label = signals[i]
+            args.append((signal, style, label))
 
-        if len(tempData) > 300:
-            tempData.pop(0)
-            timeData.pop(0)
+        title = "Temperature Plot"
+        drawnow(lambda: makeFig(title, "Time (ms)", "Value", [10, 30], *args))
+        plt.pause(0.0001)
 
-    except Exception:
-        pass
+        # Keep only last 500 samples
+        if len(time_ms) > NUM_SAMPLES:
+            time_ms.pop(0)
+            for signal in all_signals:
+                signal.pop(0)
+
+    except Exception as e:
+        print("Error:", e)

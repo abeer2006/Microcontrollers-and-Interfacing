@@ -1,4 +1,4 @@
-# Install script for directory: /home/bareera-junaid-shaikh/Microcontrollers-and-Interfacing/Lab08/cmake/stm32cubemx
+# Install script for directory: /home/abeer-ansari/Downloads/Microcontrollers-and-Interfacing/lab08/task02/cmake/stm32cubemx
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -34,12 +34,12 @@ endif()
 
 # Set path to fallback-tool for dependency-resolution.
 if(NOT DEFINED CMAKE_OBJDUMP)
-  set(CMAKE_OBJDUMP "/home/bareera-junaid-shaikh/snap/code/225/.local/share/stm32cube/bundles/gnu-tools-for-stm32/14.3.1+st.2/bin/arm-none-eabi-objdump")
+  set(CMAKE_OBJDUMP "/home/abeer-ansari/.local/share/stm32cube/bundles/gnu-tools-for-stm32/14.3.1+st.2/bin/arm-none-eabi-objdump")
 endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
 if(CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "/home/bareera-junaid-shaikh/Microcontrollers-and-Interfacing/Lab08/build/Debug/cmake/stm32cubemx/install_local_manifest.txt"
+  file(WRITE "/home/abeer-ansari/Downloads/Microcontrollers-and-Interfacing/lab08/task02/build/Debug/cmake/stm32cubemx/install_local_manifest.txt"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()
