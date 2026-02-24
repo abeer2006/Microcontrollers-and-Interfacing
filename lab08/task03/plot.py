@@ -1,76 +1,76 @@
-import time, serial
+import serial
 import matplotlib.pyplot as plt
 from drawnow import *
 
 # === Setup Serial ===
-ser = serial.Serial('/dev/ttyUSB0', 115200)
-
+sinWaveData = serial.Serial('/dev/ttyUSB0', 115200)
 plt.ion()
 
-tempData = []
-xData = []
-yData = []
-zData = []
+# === Plot Styles to Rotate Through ===
+plot_styles = ['r.-', 'b.-', 'g.-', 'm.-', 'c.-', 'y.-', 'k.-']
+
+# === Data Storage ===
+NUM_SAMPLES = 100
 time_ms = []
 cnt = 0
+all_signals = []  # List of lists. all_signals[0] = i values, all_signals[1] = j values, etc.
+signals = ["Temperature", "X", "Y", "Z"]
 
 
-# === Plot Function ===
-def makeFig():
+
+# === Plotting Function ===
+def makeFig(title, xLabel, yLabel, yLimit, *args):
     plt.clf()
-    plt.title('Live Gyroscope Data')
+    plt.title(title)
     plt.grid(True)
-    plt.xlabel('Sample Number')
-    plt.ylabel('Value')
+    plt.xlabel(xLabel)
+    plt.ylabel(yLabel)
+    plt.ylim(yLimit[0], yLimit[1])  
 
-    plt.plot(time_ms, tempData, 'k.-', label='Temp')
-    plt.plot(time_ms, xData, 'r.-', label='X dps')
-    plt.plot(time_ms, yData, 'g.-', label='Y dps')
-    plt.plot(time_ms, zData, 'b.-', label='Z dps')
+    for data, style, label in args:
+        plt.plot(time_ms, data, style, label=label)
 
     plt.legend(loc='upper left')
 
-while True:
-    try:
-        ser = serial.Serial('/dev/ttyUSB0',115200)
-        break
-    except:
-        print("Waiting for port...")
-        time.sleep(1)
-        
+
 # === Main Loop ===
 while True:
-    while ser.inWaiting() == 0:
-        pass
+    while sinWaveData.inWaiting() == 0:
+        pass  # Wait for data
 
     try:
-        line = ser.readline().decode().strip()
-        values = line.split(',')
+        line = sinWaveData.readline().decode().strip()
+        # Replace multiple spaces/tabs with single space
+        values = line.replace('\t', ' ').split()
+        # Convert to int
+        values = [int(v) for v in values]
 
-        if len(values) == 4:
-            temp = float(values[0])
-            x = float(values[1])
-            y = float(values[2])
-            z = float(values[3])
+        # Initialize lists if first time
+        if len(all_signals) != len(values):
+            all_signals = [[] for _ in range(len(values))]
 
-            tempData.append(temp)
-            xData.append(x)
-            yData.append(y)
-            zData.append(z)
+        # Append values to corresponding lists
+        for i, val in enumerate(values):
+            all_signals[i].append(val)
 
-            time_ms.append(cnt)
-            cnt += 1
+        time_ms.append(cnt)
+        cnt += 1
 
-            drawnow(makeFig)
-            plt.pause(0.0001)
+        # Build arguments for plotting
+        args = []
+        for i, signal_data in enumerate(all_signals):
+            style = plot_styles[i % len(plot_styles)]
+            label = signals[i] if i < len(signals) else f"Signal {i}"
+            args.append((signal_data, style, label))
 
-            # keep last 500 samples
-            if len(tempData) > 500:
-                tempData.pop(0)
-                xData.pop(0)
-                yData.pop(0)
-                zData.pop(0)
-                time_ms.pop(0)
+        drawnow(lambda: makeFig("Gyroscope Plot", "Time (ms)", "Value", [-255, 255], *args))
+        plt.pause(0.0001)
+
+        # Keep only last NUM_SAMPLES samples
+        if len(time_ms) > NUM_SAMPLES:
+            time_ms.pop(0)
+            for signal in all_signals:
+                signal.pop(0)
 
     except Exception as e:
         print("Error:", e)

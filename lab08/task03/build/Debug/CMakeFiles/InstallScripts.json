@@ -1,8 +1,8 @@
 {
 	"InstallScripts" : 
 	[
-		"/home/bareera-junaid-shaikh/Microcontrollers-and-Interfacing/Lab08/build/Debug/cmake_install.cmake",
-		"/home/bareera-junaid-shaikh/Microcontrollers-and-Interfacing/Lab08/build/Debug/cmake/stm32cubemx/cmake_install.cmake"
+		"/home/abeer-ansari/Downloads/Microcontrollers-and-Interfacing/lab08/task03/build/Debug/cmake_install.cmake",
+		"/home/abeer-ansari/Downloads/Microcontrollers-and-Interfacing/lab08/task03/build/Debug/cmake/stm32cubemx/cmake_install.cmake"
 	],
 	"Parallel" : false
 }

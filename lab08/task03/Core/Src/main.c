@@ -51,6 +51,7 @@ I2C_HandleTypeDef hi2c1;
 
 SPI_HandleTypeDef hspi1;
 
+UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 PCD_HandleTypeDef hpcd_USB_FS;
@@ -66,6 +67,7 @@ static void MX_I2C1_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USB_PCD_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -75,41 +77,39 @@ static void MX_USART2_UART_Init(void);
 
 #define CTRL_REG1 0x20
 #define CTRL_REG1_VAL 0b10001111 // Power on , enable X, Y, Z axes
+#define CTRL_REG4 0x23
+#define CTRL_REG4_VAL 0b00000000 // FS [1:0] = 00 => +/- 245 dps
+#define OUT_TEMP           0x26
+#define OUT_X_L            0x28
+#define OUT_X_H            0x29
+#define OUT_Y_L            0x2A
+#define OUT_Y_H            0x2B
+#define OUT_Z_L            0x2C
+#define OUT_Z_H            0x2D
+#define CS_LOW()  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, GPIO_PIN_RESET)
+#define CS_HIGH() HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, GPIO_PIN_SET)
+int32_t x_offset = 0;
+int32_t y_offset = 0;
+int32_t z_offset = 0;
 
-uint8_t temp_addr = 0x26 | 0x80 ;
-uint8_t temperature = 0x00;
-
-// X, Y, Z axes Addresses
-uint8_t X_L_addr = 0x28 | 0x80;
-uint8_t X_H_addr = 0x29 | 0x80;
-uint8_t Y_L_addr = 0x2A | 0x80;
-uint8_t Y_H_addr = 0x2B | 0x80;
-uint8_t Z_L_addr = 0x2C | 0x80;
-uint8_t Z_H_addr = 0x2D | 0x80;
-
-// X, Y, Z axes data
-uint8_t OUT_X_L = 0x000;
-uint8_t OUT_X_H = 0x000;
-uint8_t OUT_Y_L = 0x000;
-uint8_t OUT_Y_H = 0x000;
-uint8_t OUT_Z_L = 0x000;
-uint8_t OUT_Z_H = 0x000;
 
 // Function declarations
 void myPrintf(const char *fmt, ...);
 void gyro_init ();
-
+void gyro_set_ctrl_reg4 ();
+void spi_write(uint8_t reg, uint8_t value);
+uint8_t spi_read(uint8_t reg);
+void gyro_calibrate();
 /* USER CODE END 0 */
 
 /**
   * @brief  The application entry point.
   * @retval int
-  */ 
+  */
 int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -134,51 +134,33 @@ int main(void)
   MX_SPI1_Init();
   MX_USB_PCD_Init();
   MX_USART2_UART_Init();
-  gyro_init ();
-
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  
+  gyro_init();
+  gyro_set_ctrl_reg4();
+  gyro_calibrate();
   /* USER CODE END 2 */
-  
-  /* USER CODE BEGIN 3 */
-  
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
     
-    HAL_GPIO_WritePin (GPIOE , GPIO_PIN_3 , GPIO_PIN_RESET );
+    int8_t temp = (int8_t)spi_read(OUT_TEMP);
+    int16_t x = ((int16_t)(spi_read(OUT_X_H) << 8 | spi_read(OUT_X_L))) - x_offset;
+    int16_t y = ((int16_t)(spi_read(OUT_Y_H) << 8 | spi_read(OUT_Y_L))) - y_offset;
+    int16_t z = ((int16_t)(spi_read(OUT_Z_H) << 8 | spi_read(OUT_Z_L))) - z_offset;
 
-    HAL_SPI_Transmit_IT (&hspi1 , &X_L_addr, 1 );
-    HAL_SPI_Transmit_IT (&hspi1 , &X_H_addr, 1 );
-    HAL_SPI_Transmit_IT (&hspi1 , &Y_L_addr, 1 );
-    HAL_SPI_Transmit_IT (&hspi1 , &Y_H_addr, 1 );
-    HAL_SPI_Transmit_IT (&hspi1 , &Z_L_addr, 1 );
-    HAL_SPI_Transmit_IT (&hspi1 , &Z_H_addr, 1 );
-    HAL_SPI_Transmit_IT (&hspi1 , &temp_addr, 1 );
+  myPrintf("%d \t %d \t %d \t %d\r\n", temp, x, y, z);
 
-    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_13, GPIO_PIN_SET);
-
-    HAL_SPI_Receive_IT (&hspi1 , &OUT_X_L , 1 );
-    HAL_SPI_Receive_IT (&hspi1 , &OUT_X_H , 1 );
-    HAL_SPI_Receive_IT (&hspi1 , &OUT_Y_L , 1 );
-    HAL_SPI_Receive_IT (&hspi1 , &OUT_Y_H , 1 );
-    HAL_SPI_Receive_IT (&hspi1 , &OUT_Z_L , 1 );
-    HAL_SPI_Receive_IT (&hspi1 , &OUT_Z_H , 1 );
-    HAL_SPI_Receive_IT (&hspi1 , &temperature, 1 );
-
-    int16_t x = ( int16_t )(( OUT_X_H << 8) | OUT_X_L );
-    int16_t y = ( int16_t )(( OUT_Y_H << 8) | OUT_Y_L );
-    int16_t z = ( int16_t )(( OUT_Z_H << 8) | OUT_Z_L );
-
-    float x_dps = x* 0.00875f;
-    float y_dps = y * 0.00875f;
-    float z_dps = z * 0.00875f;
-
-    myPrintf("%d, %0.2f, %0.2f, %0.2f \r\n", temperature, x_dps, y_dps, z_dps);
+    HAL_Delay(200);
     /* USER CODE END WHILE */
 
-  }
+    /* USER CODE BEGIN 3 */
+  
   /* USER CODE END 3 */
+}
 }
 
 /**
@@ -220,8 +202,9 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB|RCC_PERIPHCLK_USART2
-                              |RCC_PERIPHCLK_I2C1;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB|RCC_PERIPHCLK_USART1
+                              |RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_I2C1;
+  PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
   PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
   PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_HSI;
   PeriphClkInit.USBClockSelection = RCC_USBCLKSOURCE_PLL;
@@ -269,7 +252,6 @@ static void MX_I2C1_Init(void)
 
   /** Configure Digital filter
   */
-
   if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
   {
     Error_Handler();
@@ -309,7 +291,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi1.Init.CRCPolynomial = 7;
   hspi1.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
-  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
   if (HAL_SPI_Init(&hspi1) != HAL_OK)
   {
     Error_Handler();
@@ -317,6 +299,41 @@ static void MX_SPI1_Init(void)
   /* USER CODE BEGIN SPI1_Init 2 */
 
   /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
 
 }
 
@@ -454,6 +471,37 @@ void gyro_init ()
  HAL_GPIO_WritePin (GPIOE , GPIO_PIN_3 , GPIO_PIN_SET );
 }
 
+void gyro_set_ctrl_reg4 ()
+{
+  uint8_t tx [2] = { CTRL_REG4 , CTRL_REG4_VAL };
+  HAL_GPIO_WritePin (GPIOE , GPIO_PIN_3 , GPIO_PIN_RESET );
+  HAL_SPI_Transmit (& hspi1 , tx , 2, HAL_MAX_DELAY );
+  HAL_GPIO_WritePin (GPIOE , GPIO_PIN_3 , GPIO_PIN_SET );
+}
+
+uint8_t spi_read(uint8_t reg)
+{
+    uint8_t tx[2];
+    uint8_t rx[2];
+    tx[0] = reg | 0x80;  // Read command (MSB = 1)
+    
+    tx[1] = 0x00;
+
+    CS_LOW();
+    HAL_SPI_TransmitReceive(&hspi1, tx, rx, 2, HAL_MAX_DELAY);
+    CS_HIGH();
+
+    return rx[1];
+}
+
+void spi_write(uint8_t reg, uint8_t value)
+{
+    uint8_t data[2] = {reg & 0x7F, value};  // Write command (MSB = 0)
+    CS_LOW();
+    HAL_SPI_Transmit(&hspi1, data, 2, HAL_MAX_DELAY);
+    CS_HIGH();
+}
+
 void myPrintf(const char *fmt, ...)
 {
   char buffer[256]; 
@@ -461,6 +509,31 @@ void myPrintf(const char *fmt, ...)
   va_start(argument, fmt);
   vsnprintf(buffer, sizeof(buffer), fmt, argument);
   HAL_UART_Transmit(&huart2, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+}
+
+
+
+void gyro_calibrate()
+{
+    int32_t x_sum = 0, y_sum = 0, z_sum = 0;
+    const int samples = 30;
+
+    for(int i = 0; i < samples; i++)
+    {
+        int16_t x = (int16_t)(spi_read(OUT_X_H) << 8 | spi_read(OUT_X_L));
+        int16_t y = (int16_t)(spi_read(OUT_Y_H) << 8 | spi_read(OUT_Y_L));
+        int16_t z = (int16_t)(spi_read(OUT_Z_H) << 8 | spi_read(OUT_Z_L));
+
+        x_sum += x;
+        y_sum += y;
+        z_sum += z;
+
+        HAL_Delay(5);
+    }
+
+    x_offset = x_sum / samples;
+    y_offset = y_sum / samples;
+    z_offset = z_sum / samples;
 }
 /* USER CODE END 4 */
 
@@ -494,3 +567,5 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
+
