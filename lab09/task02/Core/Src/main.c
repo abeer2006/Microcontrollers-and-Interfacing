@@ -80,12 +80,12 @@ static void MX_USB_PCD_Init(void);
 u_int8_t dev_addr = 0x33;
 uint16_t mem_addr = 0x0f;
 u_int8_t output;
-float acc_offset;
+
 void myPrintf(const char *fmt, ...);
 void Init_LSM();
 void Offset_LSM();
-uint16_t Read_LSM(uint8_t high_mem_addr, u_int8_t low_mem_addr);
-void Print_LSM(float x, float y, float z);
+void Read_LSM();
+void Print_LSM();
 
 #define CTRL_REG1_A 0x20
 #define CTRL_REG1_A_VAL 0x67
@@ -98,6 +98,34 @@ void Print_LSM(float x, float y, float z);
 #define OUT_Z_L_A 0x2C
 #define OUT_Z_H_A 0x2D
 #define RAD_TO_DEG 57.2958
+
+
+typedef struct
+{
+  // Raw accelerometer values (16-bit signed)
+  int16_t acc_raw_x;
+  int16_t acc_raw_y;
+  int16_t acc_raw_z;
+  
+  // Scaled accelerometer values (g units)
+  int16_t acc_x;
+  int16_t acc_y;
+  int16_t acc_z;
+  
+  // Angle estimation (degrees)
+  float angle_x;
+  float angle_y;
+  float angle_z;
+  
+  // Offset values (calculated during calibration)
+  int16_t acc_offset_x;
+  int16_t acc_offset_y;
+  int16_t acc_offset_z;
+  
+} LSM_Data_t;
+
+LSM_Data_t lsm;
+
 /* USER CODE END 0 */
 
 /**
@@ -134,21 +162,21 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_USB_PCD_Init();
+
   /* USER CODE BEGIN 2 */
+  
   Init_LSM();
   Offset_LSM();
+  //myPrintf("offset -> x: %0.2f y = %0.2f z = %0.2f\r\n", lsm.acc_offset_x, lsm.acc_offset_y, lsm.acc_offset_z);
   /* USER CODE END 2 */
   
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    float x = Read_LSM(OUT_X_H_A, OUT_X_L_A);
-    float y = Read_LSM(OUT_Y_H_A, OUT_Y_L_A);
-    float z = Read_LSM(OUT_Z_H_A, OUT_Z_L_A);
-    //Print_LSM(x, y, z);
-    HAL_Delay(500);
-
+    Read_LSM();
+    Print_LSM();
+    HAL_Delay(100) ;
     /* USER CODE END WHILE */
     
     /* USER CODE BEGIN 3 */
@@ -467,34 +495,64 @@ HAL_I2C_Mem_Write(&hi2c1, dev_addr, CTRL_REG1_A, 1, &data1, 1, 100);
 HAL_I2C_Mem_Write(&hi2c1, dev_addr, CTRL_REG4_A, 1, &data2, 1, 100);
 }
 
-uint16_t Read_LSM(uint8_t high_mem_addr, u_int8_t low_mem_addr){
-  uint8_t output_low;
-  uint8_t output_high;
-  uint16_t raw;
-  HAL_I2C_Mem_Read(&hi2c1, dev_addr, low_mem_addr, 1, &output_low, 1, 100);
-  HAL_I2C_Mem_Read(&hi2c1, dev_addr, high_mem_addr, 1, &output_high, 1, 100);
-  raw = (output_high << 8) | output_low;
-  myPrintf("raw = %u\r\n", raw);
-  return (raw * RAD_TO_DEG) - acc_offset;
+void Read_LSM(){
+  uint8_t x_low, x_high, y_low, y_high, z_low, z_high;
+  HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_X_L_A, 1, &x_low, 1, 100);
+  HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_X_H_A, 1, &x_high, 1, 100);
+  lsm.acc_raw_x = (int16_t)(x_high << 8) | x_low;
   
+  HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Y_L_A, 1, &y_low, 1, 100);
+  HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Y_H_A, 1, &y_high, 1, 100);
+  lsm.acc_raw_y = (int16_t)(y_high << 8) | y_low;
+  
+  HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Z_L_A, 1, &z_low, 1, 100);
+  HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Z_H_A, 1, &z_high, 1, 100);
+  lsm.acc_raw_z = (int16_t)(z_high << 8) | z_low;
+
+  myPrintf("raw x: %d raw y: %d raw z : %d\r\n", lsm.acc_raw_x, lsm.acc_raw_y, lsm.acc_raw_z);
+  
+
+  lsm.acc_x = (lsm.acc_raw_x - lsm.acc_offset_x);
+  lsm.acc_y = (lsm.acc_raw_y - lsm.acc_offset_y);
+  lsm.acc_z = (lsm.acc_raw_z - lsm.acc_offset_z);
+
+  lsm.angle_x = (lsm.acc_x * RAD_TO_DEG);
+  lsm.angle_y = (lsm.acc_y * RAD_TO_DEG);
+  lsm.angle_z = (lsm.acc_z * RAD_TO_DEG);
+
+  //  myPrintf("raw_x = %u\r\n", raw_x);
+//  myPrintf("raw_y = %u\r\n", raw_y);
+//  myPrintf("raw_z = %u\r\n", raw_z);
 }
 
-void Print_LSM(float x, float y, float z){
-  myPrintf("X: %.2f, Y: %.2f, Z: %.2f\r\n", x, y, z);
+void Print_LSM(){
+  myPrintf("print -> X: %d, Y: %d, Z: %d\r\n", lsm.acc_x, lsm.acc_y, lsm.acc_z);
 }
 
 void Offset_LSM(){
-  float x_acc_offset = 0;
-  float y_acc_offset = 0;
-  float z_acc_offset = 0;
+  uint8_t x_low, x_high, y_low, y_high, z_low, z_high;
+
   for(int i = 0; i < 20; i++){
-    x_acc_offset += Read_LSM(OUT_X_H_A, OUT_X_L_A);
-    y_acc_offset += Read_LSM(OUT_Y_H_A, OUT_Y_L_A);
-    z_acc_offset += Read_LSM(OUT_Z_H_A, OUT_Z_L_A);
-    HAL_Delay(10);
+    HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_X_L_A, 1, &x_low, 1, 100);
+    HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_X_H_A, 1, &x_high, 1, 100);
+    lsm.acc_offset_x =+ (int16_t)(x_high << 8) | x_low;
+  
+    HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Y_L_A, 1, &y_low, 1, 100);
+    HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Y_H_A, 1, &y_high, 1, 100);
+    lsm.acc_offset_y += (int16_t)(y_high << 8) | y_low;
+    
+    HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Z_L_A, 1, &z_low, 1, 100);
+    HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Z_H_A, 1, &z_high, 1, 100);
+    lsm.acc_offset_z += (int16_t)(z_high << 8) | z_low;
+
+    myPrintf("offset -> x: %d y: %d z: %d\r\n", lsm.acc_offset_x, lsm.acc_offset_y, lsm.acc_offset_z);
+    HAL_Delay(100);
   }
-  acc_offset = (x_acc_offset + y_acc_offset + z_acc_offset) / 20;
+  lsm.acc_offset_x /= 20; 
+  lsm.acc_offset_y /= 20;
+  lsm.acc_offset_z /= 20;
 }
+
 /* USER CODE END 4 */
 
 /**
