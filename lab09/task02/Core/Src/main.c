@@ -29,6 +29,7 @@
 #include "string.h"
 #include "math.h"
 #include <stdint.h>
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -86,6 +87,12 @@ void Init_LSM();
 void Offset_LSM();
 void Read_LSM();
 void Print_LSM();
+void gyro_init ();
+void gyro_set_ctrl_reg4 ();
+void spi_write(uint8_t reg, uint8_t value);
+uint8_t spi_read(uint8_t reg);
+void gyro_calibrate();
+void Read_Gyro();
 
 #define CTRL_REG1_A 0x20
 #define CTRL_REG1_A_VAL 0x67
@@ -98,6 +105,12 @@ void Print_LSM();
 #define OUT_Z_L_A 0x2C
 #define OUT_Z_H_A 0x2D
 #define RAD_TO_DEG 57.2958
+#define CTRL_REG1 0x20
+#define CTRL_REG1_VAL 0b10001111 // Power on , enable X, Y, Z axes
+#define CTRL_REG4 0x23
+#define CTRL_REG4_VAL 0b00000000 // FS [1:0] = 00 => +/- 245 dps
+#define CS_LOW()  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, GPIO_PIN_RESET)
+#define CS_HIGH() HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, GPIO_PIN_SET)
 
 
 typedef struct
@@ -108,9 +121,9 @@ typedef struct
   int16_t acc_raw_z;
   
   // Scaled accelerometer values (g units)
-  int16_t acc_x;
-  int16_t acc_y;
-  int16_t acc_z;
+  float acc_x;
+  float acc_y;
+  float acc_z;
   
   // Angle estimation (degrees)
   float angle_x;
@@ -122,6 +135,16 @@ typedef struct
   int16_t acc_offset_y;
   int16_t acc_offset_z;
   
+
+  // Gyroscope Values
+  int16_t gyro_x;
+  int16_t gyro_y;
+  int16_t gyro_z;
+
+  int16_t gyro_offset_x;
+  int16_t gyro_offset_y;
+  int16_t gyro_offset_z;
+
 } LSM_Data_t;
 
 LSM_Data_t lsm;
@@ -162,23 +185,31 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_USB_PCD_Init();
-
   /* USER CODE BEGIN 2 */
   
   Init_LSM();
+  gyro_init();
+  lsm.acc_offset_x = 0;
+  lsm.acc_offset_y = 0;
+  lsm.acc_offset_z = 0;
+  lsm.gyro_offset_x = 0;
+  lsm.gyro_offset_y = 0;
+  lsm.gyro_offset_z = 0;
   Offset_LSM();
-  //myPrintf("offset -> x: %0.2f y = %0.2f z = %0.2f\r\n", lsm.acc_offset_x, lsm.acc_offset_y, lsm.acc_offset_z);
+  gyro_set_ctrl_reg4();
+  gyro_calibrate();
   /* USER CODE END 2 */
-  
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
     Read_LSM();
+    Read_Gyro();
     Print_LSM();
     HAL_Delay(100) ;
     /* USER CODE END WHILE */
-    
+
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -302,17 +333,17 @@ static void MX_SPI1_Init(void)
   hspi1.Instance = SPI1;
   hspi1.Init.Mode = SPI_MODE_MASTER;
   hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_4BIT;
-  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi1.Init.CRCPolynomial = 7;
   hspi1.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
-  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
   if (HAL_SPI_Init(&hspi1) != HAL_OK)
   {
     Error_Handler();
@@ -508,25 +539,22 @@ void Read_LSM(){
   HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Z_L_A, 1, &z_low, 1, 100);
   HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Z_H_A, 1, &z_high, 1, 100);
   lsm.acc_raw_z = (int16_t)(z_high << 8) | z_low;
-
-  myPrintf("raw x: %d raw y: %d raw z : %d\r\n", lsm.acc_raw_x, lsm.acc_raw_y, lsm.acc_raw_z);
   
+  //dividing by 1000 to convert from mg to g
+  lsm.acc_x = (lsm.acc_raw_x - lsm.acc_offset_x) / 1000.0f;
+  lsm.acc_y = (lsm.acc_raw_y - lsm.acc_offset_y) / 1000.0f;
+  lsm.acc_z = (lsm.acc_raw_z - lsm.acc_offset_z) / 1000.0f;
 
-  lsm.acc_x = (lsm.acc_raw_x - lsm.acc_offset_x);
-  lsm.acc_y = (lsm.acc_raw_y - lsm.acc_offset_y);
-  lsm.acc_z = (lsm.acc_raw_z - lsm.acc_offset_z);
+  //using atan2 to calculate angles in degrees
+  lsm.angle_x  = atan2(lsm.acc_y, lsm.acc_z) * RAD_TO_DEG;
+  lsm.angle_y = atan2(-lsm.acc_x, sqrt(lsm.acc_y*lsm.acc_y + lsm.acc_z*lsm.acc_z)) * RAD_TO_DEG;
 
-  lsm.angle_x = (lsm.acc_x * RAD_TO_DEG);
-  lsm.angle_y = (lsm.acc_y * RAD_TO_DEG);
-  lsm.angle_z = (lsm.acc_z * RAD_TO_DEG);
 
-  //  myPrintf("raw_x = %u\r\n", raw_x);
-//  myPrintf("raw_y = %u\r\n", raw_y);
-//  myPrintf("raw_z = %u\r\n", raw_z);
 }
 
 void Print_LSM(){
-  myPrintf("print -> X: %d, Y: %d, Z: %d\r\n", lsm.acc_x, lsm.acc_y, lsm.acc_z);
+  myPrintf(" Accelerometer X: %0.2f, Y: %0.2f, Z: %0.2f Angle X: %0.2f Angle Y: %0.2f \r\n Gyroscope X: %d Y: %d Z: %d\r\n",
+     lsm.acc_x, lsm.acc_y, lsm.acc_z, lsm.angle_x, lsm.angle_y, lsm.gyro_x, lsm.gyro_y, lsm.gyro_z);
 }
 
 void Offset_LSM(){
@@ -535,7 +563,7 @@ void Offset_LSM(){
   for(int i = 0; i < 20; i++){
     HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_X_L_A, 1, &x_low, 1, 100);
     HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_X_H_A, 1, &x_high, 1, 100);
-    lsm.acc_offset_x =+ (int16_t)(x_high << 8) | x_low;
+    lsm.acc_offset_x += (int16_t)(x_high << 8) | x_low;
   
     HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Y_L_A, 1, &y_low, 1, 100);
     HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Y_H_A, 1, &y_high, 1, 100);
@@ -545,7 +573,7 @@ void Offset_LSM(){
     HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Z_H_A, 1, &z_high, 1, 100);
     lsm.acc_offset_z += (int16_t)(z_high << 8) | z_low;
 
-    myPrintf("offset -> x: %d y: %d z: %d\r\n", lsm.acc_offset_x, lsm.acc_offset_y, lsm.acc_offset_z);
+    //myPrintf("offset -> x: %d y: %d z: %d\r\n", lsm.acc_offset_x, lsm.acc_offset_y, lsm.acc_offset_z);
     HAL_Delay(100);
   }
   lsm.acc_offset_x /= 20; 
@@ -553,6 +581,92 @@ void Offset_LSM(){
   lsm.acc_offset_z /= 20;
 }
 
+void gyro_init ()
+{
+ uint8_t tx [2] = { CTRL_REG1 , CTRL_REG1_VAL };
+ // Pull CS low to begin communication
+ HAL_GPIO_WritePin (GPIOE , GPIO_PIN_3 , GPIO_PIN_RESET );
+
+ // Send control register configuration
+ HAL_SPI_Transmit (&hspi1 , tx , 2, HAL_MAX_DELAY );
+
+ // Pull CS high to end communication
+ HAL_GPIO_WritePin (GPIOE , GPIO_PIN_3 , GPIO_PIN_SET );
+}
+
+void gyro_set_ctrl_reg4 ()
+{
+  uint8_t tx [2] = { CTRL_REG4 , CTRL_REG4_VAL };
+  HAL_GPIO_WritePin (GPIOE , GPIO_PIN_3 , GPIO_PIN_RESET );
+  HAL_SPI_Transmit (& hspi1 , tx , 2, 100 );
+  HAL_GPIO_WritePin (GPIOE , GPIO_PIN_3 , GPIO_PIN_SET );
+}
+
+void gyro_calibrate()
+{
+    int32_t x_sum = 0, y_sum = 0, z_sum = 0;
+    const int samples = 20;
+
+    for(int i = 0; i < samples; i++)
+    {
+        int16_t x = (int16_t)(spi_read(OUT_X_H_A) << 8 | spi_read(OUT_X_L_A));
+        int16_t y = (int16_t)(spi_read(OUT_Y_H_A) << 8 | spi_read(OUT_Y_L_A));
+        int16_t z = (int16_t)(spi_read(OUT_Z_H_A) << 8 | spi_read(OUT_Z_L_A));
+
+        x_sum += x;
+        y_sum += y;
+        z_sum += z;
+
+        HAL_Delay(100);
+    }
+
+    lsm.gyro_offset_x = x_sum / samples;
+    lsm.gyro_offset_y = y_sum / samples;
+    lsm.gyro_offset_z = z_sum / samples;
+}
+
+uint8_t spi_read(uint8_t reg)
+{
+    uint8_t tx[2];
+    uint8_t rx[2];
+    tx[0] = reg | 0x80;  // Read command (MSB = 1)
+    
+    tx[1] = 0x00;
+
+    CS_LOW();
+    HAL_SPI_TransmitReceive(&hspi1, tx, rx, 2, HAL_MAX_DELAY);
+    CS_HIGH();
+
+    return rx[1];
+}
+
+void spi_write(uint8_t reg, uint8_t value)
+{
+    uint8_t data[2] = {reg & 0x7F, value};  // Write command (MSB = 0)
+    CS_LOW();
+    HAL_SPI_Transmit(&hspi1, data, 2, HAL_MAX_DELAY);
+    CS_HIGH();
+}
+
+void Read_Gyro()
+{
+    uint8_t xl, xh, yl, yh, zl, zh;
+
+    // X-axis
+    xl = spi_read(OUT_X_L_A);
+    xh = spi_read(OUT_X_H_A);
+    lsm.gyro_x = (int16_t)((xh << 8) | xl) - lsm.gyro_offset_x;
+
+    // Y-axis
+    yl = spi_read(OUT_Y_L_A);
+    yh = spi_read(OUT_Y_H_A);
+    lsm.gyro_y = (int16_t)((yh << 8) | yl) - lsm.gyro_offset_y;
+
+    // Z-axis
+    zl = spi_read(OUT_Z_L_A);
+    zh = spi_read(OUT_Z_H_A);
+    lsm.gyro_z = (int16_t)((zh << 8) | zl) - lsm.gyro_offset_z;
+}
 /* USER CODE END 4 */
 
 /**
@@ -560,7 +674,8 @@ void Offset_LSM(){
   * @retval None
   */
 void Error_Handler(void)
-{  /* USER CODE BEGIN Error_Handler_Debug */
+{
+  /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
   while (1)
