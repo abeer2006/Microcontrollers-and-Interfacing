@@ -335,7 +335,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.Direction = SPI_DIRECTION_2LINES;
   hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
   hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH;
-  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
   hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
@@ -625,6 +625,7 @@ void gyro_calibrate()
     lsm.gyro_offset_z = z_sum / samples;
 }
 
+
 uint8_t spi_read(uint8_t reg)
 {
     uint8_t tx[2];
@@ -648,6 +649,55 @@ void spi_write(uint8_t reg, uint8_t value)
     CS_HIGH();
 }
 
+// SPI read multiple bytes from L3GD20
+// void spi_read_bytes(uint8_t reg, uint8_t *data, uint8_t len)
+// {
+//     // For L3GD20:
+//     // Bit 7 = 1 (read), Bit 6 = 1 (auto-increment if reading multiple registers)
+//     uint8_t addr = reg | 0x80;
+//     if(len > 1) addr |= 0x40; // Enable auto-increment for multi-byte read
+
+//     CS_LOW();
+//     HAL_SPI_Transmit(&hspi1, &addr, 1, HAL_MAX_DELAY);
+//     HAL_SPI_Receive(&hspi1, data, len, HAL_MAX_DELAY);
+//     CS_HIGH();
+// }
+
+// // SPI write a single byte
+// void spi_write(uint8_t reg, uint8_t value)
+// {
+//     uint8_t data[2] = { reg & 0x7F, value }; // MSB = 0 for write
+//     CS_LOW();
+//     HAL_SPI_Transmit(&hspi1, data, 2, HAL_MAX_DELAY);
+//     CS_HIGH();
+// }
+// void gyro_calibrate()
+// {
+//     int32_t x_sum = 0, y_sum = 0, z_sum = 0;
+//     const int samples = 50; // Take more samples for better accuracy
+//     uint8_t buffer[6];
+
+//     for(int i = 0; i < samples; i++)
+//     {
+//         spi_read_bytes(OUT_X_L_A, buffer, 6);
+
+//         int16_t x = (int16_t)(buffer[0] | (buffer[1] << 8));
+//         int16_t y = (int16_t)(buffer[2] | (buffer[3] << 8));
+//         int16_t z = (int16_t)(buffer[4] | (buffer[5] << 8));
+
+//         x_sum += x;
+//         y_sum += y;
+//         z_sum += z;
+
+//         HAL_Delay(20);
+//     }
+
+//     lsm.gyro_offset_x = x_sum / samples;
+//     lsm.gyro_offset_y = y_sum / samples;
+//     lsm.gyro_offset_z = z_sum / samples;
+// }
+
+
 void Read_Gyro()
 {
     uint8_t xl, xh, yl, yh, zl, zh;
@@ -667,6 +717,18 @@ void Read_Gyro()
     zh = spi_read(OUT_Z_H_A);
     lsm.gyro_z = (int16_t)((zh << 8) | zl) - lsm.gyro_offset_z;
 }
+// void Read_Gyro()
+// {
+//     uint8_t buffer[6];
+    
+//     // Read 6 consecutive bytes: OUT_X_L, OUT_X_H, OUT_Y_L, OUT_Y_H, OUT_Z_L, OUT_Z_H
+//     spi_read_bytes(OUT_X_L_A, buffer, 6);
+
+//     // Combine low and high bytes (low first!)
+//     lsm.gyro_x = (int16_t)(buffer[0] | (buffer[1] << 8)) - lsm.gyro_offset_x;
+//     lsm.gyro_y = (int16_t)(buffer[2] | (buffer[3] << 8)) - lsm.gyro_offset_y;
+//     lsm.gyro_z = (int16_t)(buffer[4] | (buffer[5] << 8)) - lsm.gyro_offset_z;
+// }
 /* USER CODE END 4 */
 
 /**
