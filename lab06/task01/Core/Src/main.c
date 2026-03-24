@@ -18,13 +18,14 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "stm32f3xx_hal_uart.h"
 #include "usb_device.h"
+#include "stm32f3xx_hal_uart.h"
 #include "stdarg.h"
 #include "stdio.h"
 #include "stm32f3xx_hal.h"
 #include "string.h"
 #include "math.h"
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -113,6 +114,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -120,11 +122,13 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
     int sum = 0;
+    //myPrintf("hello");
+    // HAL_UART_Transmit(&huart1, (uint8_t*)"Hello", 10, HAL_MAX_DELAY);
+
+
     if (i == 10) {
-      for (int j = 0; j < 10; i++) {
+      for (int j = 0; j < 10; j++) {
         sum = sum + count[j];
       }
       sum = sum / 10;
@@ -133,9 +137,9 @@ int main(void)
       i = 0;
     }
     HAL_Delay(100);
-  /* USER CODE END 3 */
+    /* USER CODE BEGIN 3 */
   }
-  
+  /* USER CODE END 3 */
 }
 
 /**
@@ -373,7 +377,6 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
@@ -398,17 +401,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : B1_Pin */
-  GPIO_InitStruct.Pin = B1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PD0 */
+  /*Configure GPIO pin : PA0 */
   GPIO_InitStruct.Pin = GPIO_PIN_0;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
@@ -420,7 +417,6 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-// Interrupt handler for EXTI line 0
 
  void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){ 
   if (GPIO_Pin == GPIO_PIN_0)
@@ -430,24 +426,24 @@ static void MX_GPIO_Init(void)
       interruptFlag = 1;
       __HAL_TIM_SET_COUNTER(&htim2, 0);
       HAL_TIM_Base_Start(&htim2);
+    
     }
     else if (interruptFlag == 1 && i <= 9){
       interruptFlag = 0;
       HAL_TIM_Base_Stop(&htim2);
       count[i] = __HAL_TIM_GET_COUNTER(&htim2);
       i += 1;
-      HAL_UART_Transmit(&huart1, (uint8_t*)&i, 1, HAL_MAX_DELAY);
     }
   }
 }
 
 void myPrintf(const char *fmt, ...)
 {
-    char buffer[128]; 
+    char buffer[30]; 
     va_list argument;
     va_start(argument, fmt);
     vsnprintf(buffer, sizeof(buffer), fmt, argument);
-    HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+    HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), 100);
 }
 /* USER CODE END 4 */
 
