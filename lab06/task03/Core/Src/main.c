@@ -19,11 +19,15 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "usb_device.h"
-#include <stdint.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdint.h>
+#include "stdarg.h"
+#include "stdio.h"
+#include "stm32f3xx_hal.h"
+#include "string.h"
+#include "math.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -120,8 +124,9 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    LeftMotor_Forward(255);
-    RightMotor_Forward(255);
+    //myPrintf("Hello\r\n");
+    LeftMotor_Forward(999);
+    RightMotor_Forward(999);
     uint32_t t1,t2;
    // HAL_UART_Transmit(&huart2, (uint8_t *)"Help", 10, 100);
     while (HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_4) == GPIO_PIN_SET);
@@ -135,9 +140,10 @@ int main(void)
     t2 = __HAL_TIM_GET_COUNTER(&htim2);}
 
     uint32_t t = t2 - t1;
-    uint32_t freq = 1000 / t;
+    float freq = 1000000.0 / t;
     uint32_t rpm = (60 * freq) / PPR;
-    myPrintf("RPM: %d\r\n", rpm);
+    myPrintf("t1: %lu, t2: %lu, t: %lu, freq: %.2f, rpm: %lu\r\n", t1, t2, t, freq, rpm);
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -264,7 +270,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 47;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 999;
+  htim2.Init.Period = 4294967295;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -323,7 +329,7 @@ static void MX_TIM3_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 500;
+  sConfigOC.Pulse = 0;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
@@ -357,7 +363,7 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 15200;
+  huart2.Init.BaudRate = 115200;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;

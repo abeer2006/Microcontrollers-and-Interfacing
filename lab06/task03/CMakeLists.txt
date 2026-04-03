@@ -15,11 +15,12 @@ set(CMAKE_C_EXTENSIONS ON)
 
 # Define the build type
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "Debug")
+set(CMAKE_BUILD_TYPE "Debug")
 endif()
 
 # Set the project name
 set(CMAKE_PROJECT_NAME Lab06_final)
+
 
 # Enable compile command to ease indexing with e.g. clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
@@ -39,8 +40,9 @@ add_subdirectory(cmake/stm32cubemx)
 
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user defined library search paths
+# Add user defined library search paths
 )
+target_link_options (${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float )
 
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
