@@ -77,6 +77,7 @@ void LeftMotor_Forward(uint16_t speed);
 void LeftMotor_Backward(uint16_t speed);
 void LeftMotor_Stop(void);
 void myPrintf(const char *fmt, ...);
+
 void HAL_TIM_IC_CaptureCallback ( TIM_HandleTypeDef *htim);
 uint32_t last_capture_right = 0, period_right = 0;
 uint32_t last_capture_left = 0, period_left = 0;
@@ -97,6 +98,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+
   HAL_Init();
 
   /* USER CODE BEGIN Init */
@@ -119,24 +121,26 @@ int main(void)
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
+
   HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
-  HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_2);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    //LeftMotor_Forward(999);
+    RightMotor_Forward(500);
 
-    //myPrintf("Hello\r\n");
-    LeftMotor_Forward(999);
-    RightMotor_Forward(999);
-    // float freq = 48000000 / (72* period_right);
-     float freq = 1000000.0 / period_right;
-    uint32_t rpm = (60 * freq) / PPR;
-    myPrintf("period_right: %lu, freq: %.2f, rpm: %lu\r\n", period_right, freq, rpm);
+    if (period_left > 0)
+    {
+      float freq = 1000000.0f / period_left;
+      float rpm  = (60.0f * freq) / PPR;
 
+      myPrintf("LEFT -> period: %lu, freq: %.2f, rpm: %.2f\r\n",period_left, freq, rpm);
+    }
+    
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -289,7 +293,7 @@ static void MX_TIM2_Init(void)
   sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
   sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
   sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
-  sConfigIC.ICFilter = 0;
+  sConfigIC.ICFilter = 10;
   if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_1) != HAL_OK)
   {
     Error_Handler();
@@ -513,24 +517,41 @@ HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_RESET);
 
 __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);
 }
+/*
+TIM2 channel 2 is connected to right motor encoder (PIN 9), channel 1 to left motor encoder (PIN8)
+*/
+volatile uint32_t capture1 = 0;
+volatile uint32_t capture2 = 0;
 
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 {
+    // HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_8); // debug LED
+
     if (htim->Instance == TIM2 && htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1)
     {
-        uint32_t current_capture = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
-
-        if (current_capture >= last_capture_right)
-            period_right = current_capture - last_capture_right;
+        if (capture1 == 0)
+        {
+            // first edge
+            capture1 = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
+        }
         else
-            period_right = (0xFFFFFFFF - last_capture_right) + current_capture;
+        {
+            // second edge
+            capture2 = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
 
-        last_capture_right = current_capture;
-
-        HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_8); // debug LED
+            if (capture2 > capture1)
+            {
+                period_left = capture2 - capture1;
+                capture1 = capture2;  
+            }
+            else
+            {
+                // overflow or glitch → reset
+                capture1 = 0;
+            }
+        }
     }
 }
-
 
 void myPrintf(const char *fmt, ...)
 {
