@@ -183,6 +183,7 @@ int main(void)
 
 
 
+
   HAL_Init();
 
   /* USER CODE BEGIN Init */
@@ -215,10 +216,12 @@ int main(void)
   lsm.gyro_offset_z = 0;
   float tilt_angle_x = 0;
   float tilt_angle_y = 0;
-  float tilt_angle_z = 0;
-  int dt = 0.1; // Assuming a loop delay of 100ms (0.1 seconds)
+  //float tilt_angle_z = 0;
+  float dt = 0.1; // Assuming a loop delay of 100ms (0.1 seconds)
+  HAL_Delay(100);
   Offset_LSM();
   gyro_set_ctrl_reg4();
+  HAL_Delay(100);
   gyro_calibrate();
   /* USER CODE END 2 */
 
@@ -229,12 +232,13 @@ int main(void)
     Read_LSM();
     Read_Gyro();
 
-    tilt_angle_x = 0.98 * (tilt_angle_x + lsm.gyro_x_dps * dt) + 0.02 * lsm.angle_x;
-    tilt_angle_y = 0.98 * (tilt_angle_y + lsm.gyro_y_dps * dt) + 0.02 * lsm.angle_y;
+    tilt_angle_x = 0.98 * (tilt_angle_x + lsm.gyro_x_dps * dt) + 0.02 * -lsm.angle_x;
+    //tilt_angle_y = 0.98 * (tilt_angle_y + lsm.gyro_y_dps * dt) + 0.02 * lsm.angle_y; 
 
 
-    myPrintf("Tilt Angle X: %f, Tilt Angle Y: %f, Tilt Angle Z: %f\r\n", tilt_angle_x, tilt_angle_y, tilt_angle_z);
-    HAL_Delay(100);
+    //myPrintf("Tilt Angle X: %f, Gyro X: %f, Gyro Y: %f\r\n", tilt_angle_x, lsm.gyro_x_dps, lsm.gyro_y_dps);
+    myPrintf("Angle_x: %f \r\n", lsm.angle_x);
+    HAL_Delay(10);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -557,7 +561,7 @@ void Read_LSM(){
   uint8_t x_low, x_high, y_low, y_high, z_low, z_high;
   HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_X_L_A, 1, &x_low, 1, 100);
   HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_X_H_A, 1, &x_high, 1, 100);
-  lsm.acc_raw_x = (int16_t)(x_high << 8) | x_low;
+  lsm.acc_raw_x = (int16_t)(x_high << 8) | x_low ;
   
   HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Y_L_A, 1, &y_low, 1, 100);
   HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Y_H_A, 1, &y_high, 1, 100);
@@ -566,15 +570,20 @@ void Read_LSM(){
   HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Z_L_A, 1, &z_low, 1, 100);
   HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Z_H_A, 1, &z_high, 1, 100);
   lsm.acc_raw_z = (int16_t)(z_high << 8) | z_low;
+
+  float acc_x_scaled = lsm.acc_raw_x * 3.9f;
+  float acc_y_scaled = lsm.acc_raw_y * 3.9f;
+  float acc_z_scaled = lsm.acc_raw_z * 3.9f;
   
   //dividing by 1000 to convert from mg to g
-  lsm.acc_x = (lsm.acc_raw_x - lsm.acc_offset_x) / 1000.0f;
-  lsm.acc_y = (lsm.acc_raw_y - lsm.acc_offset_y) / 1000.0f;
-  lsm.acc_z = (lsm.acc_raw_z - lsm.acc_offset_z) / 1000.0f;
+  lsm.acc_x = (acc_x_scaled - lsm.acc_offset_x) / 1000.0f;
+  lsm.acc_y = (acc_y_scaled - lsm.acc_offset_y) / 1000.0f;
+  lsm.acc_z = (acc_z_scaled - lsm.acc_offset_z) / 1000.0f;
 
   //using atan2 to calculate angles in degrees
-  lsm.angle_x  = atan2(lsm.acc_y, lsm.acc_z) * RAD_TO_DEG;
-  lsm.angle_y = atan2(-lsm.acc_x, sqrt(lsm.acc_y*lsm.acc_y + lsm.acc_z*lsm.acc_z)) * RAD_TO_DEG;
+  lsm.angle_x  = atan2(lsm.acc_x, lsm.acc_z) * RAD_TO_DEG;
+  //lsm.angle_y = atan2(-lsm.acc_x, sqrt(lsm.acc_y*lsm.acc_y + lsm.acc_z*lsm.acc_z)) * RAD_TO_DEG;
+  lsm.angle_y = atan2(lsm.acc_y, lsm.acc_z) * RAD_TO_DEG;
 }
 
 void Print_LSM(){
@@ -584,28 +593,50 @@ void Print_LSM(){
     myPrintf("Accelerometer X: %0.2f, Y: %0.2f, Z: %0.2f Angle X: %0.2f Angle Y: %0.2f \r\n", lsm.acc_x, lsm.acc_y, lsm.acc_z, lsm.angle_x, lsm.angle_y );
 }
 
-void Offset_LSM(){
+void Offset_LSM()
+{
   uint8_t x_low, x_high, y_low, y_high, z_low, z_high;
 
-  for(int i = 0; i < 200; i++){
-    HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_X_L_A, 1, &x_low, 1, 100);
-    HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_X_H_A, 1, &x_high, 1, 100);
-    lsm.acc_offset_x += (int16_t)(x_high << 8) | x_low;
-  
-    HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Y_L_A, 1, &y_low, 1, 100);
-    HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Y_H_A, 1, &y_high, 1, 100);
-    lsm.acc_offset_y += (int16_t)(y_high << 8) | y_low;
-    
-    HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Z_L_A, 1, &z_low, 1, 100);
-    HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Z_H_A, 1, &z_high, 1, 100);
-    lsm.acc_offset_z += (int16_t)(z_high << 8) | z_low;
+  float sum_x = 0.0f;
+  float sum_y = 0.0f;
+  float sum_z = 0.0f;
 
-    //myPrintf("offset -> x: %d y: %d z: %d\r\n", lsm.acc_offset_x, lsm.acc_offset_y, lsm.acc_offset_z);
-    //HAL_Delay(100);
+  int samples = 200;
+
+  for(int i = 0; i < samples; i++)
+  {
+      // ---- READ RAW X ----
+      HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_X_L_A, 1, &x_low, 1, 100);
+      HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_X_H_A, 1, &x_high, 1, 100);
+      int16_t raw_x = (int16_t)(x_high << 8) | x_low;
+
+      // ---- READ RAW Y ----
+      HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Y_L_A, 1, &y_low, 1, 100);
+      HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Y_H_A, 1, &y_high, 1, 100);
+      int16_t raw_y = (int16_t)(y_high << 8) | y_low;
+
+      // ---- READ RAW Z ----
+      HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Z_L_A, 1, &z_low, 1, 100);
+      HAL_I2C_Mem_Read(&hi2c1, dev_addr, OUT_Z_H_A, 1, &z_high, 1, 100);
+      int16_t raw_z = (int16_t)(z_high << 8) | z_low;
+
+      // ---- SCALE TO mg ----
+      float scaled_x = raw_x * 3.9f;
+      float scaled_y = raw_y * 3.9f;
+      float scaled_z = raw_z * 3.9f;
+
+      // ---- ACCUMULATE ----
+      sum_x += scaled_x;
+      sum_y += scaled_y;
+      sum_z += scaled_z;
+
+      HAL_Delay(5);  // small delay for stable readings
   }
-  lsm.acc_offset_x /= 20; 
-  lsm.acc_offset_y /= 20;
-  lsm.acc_offset_z /= 20;
+
+  // ---- AVERAGE (FINAL OFFSET) ----
+  lsm.acc_offset_x = sum_x / samples - 1000.0f;
+  lsm.acc_offset_y = sum_y / samples - 1000.0f;
+  lsm.acc_offset_z = sum_z / samples - 1000.0f;
 }
 
 void gyro_init ()
@@ -697,7 +728,6 @@ void Read_Gyro()
   lsm.gyro_x_dps = lsm.gyro_x * 0.00875f;
   lsm.gyro_y_dps = lsm.gyro_y * 0.00875f;
   lsm.gyro_z_dps = lsm.gyro_z * 0.00875f;
- 
 }
 
 /* USER CODE END 4 */
