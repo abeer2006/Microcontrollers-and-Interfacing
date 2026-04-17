@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "motor.h"
 #include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -149,11 +150,10 @@ int main(void)
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
  
  
- 
   PIDController_Init(&pid);
-  pid.kp = 10.0f;
-  pid.ki = 1.0f;
-  pid.kd = 0.8f;
+  pid.kp = 2.0f;    
+  pid.ki = 0.0f;    
+  pid.kd = 1.5f; 
   pid.sampling_time = dt;
   HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);   // highest priority
   HAL_NVIC_SetPriority(TIM4_IRQn, 1, 0);       // lower than SysTick
@@ -170,6 +170,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    //RightMotor_Forward(255);
+    //LeftMotor_Forward(255);
      
   /* USER CODE END 3 */
 }
@@ -188,7 +190,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         if (speed > 255)  speed = 255;
         if (speed < -255) speed = -255;
 
-        if (speed > -5 && speed < 5)
+        if (speed > -10 && speed < 10)
         {
             LeftMotor_Stop();
             RightMotor_Stop();
