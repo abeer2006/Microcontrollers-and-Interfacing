@@ -18,7 +18,6 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "motor.h"
 #include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -91,11 +90,13 @@ static void MX_SPI1_Init(void);
 void myPrintf(const char *fmt, ...);
  // Initialize and tune PID controller
   float dt = 0.01f;  // 10ms loop delay
-  float setpoint = 0.0f;
+  float setpoint = 0.3f;
   float tilt_x = 0.0f;
 
 LSM_Data_t lsm = {0};  // zero-initialize all fields
 PIDController pid;
+// 
+
 /* USER CODE END 0 */
 
 /**
@@ -124,7 +125,7 @@ int main(void)
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
-
+  
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_I2C1_Init();
@@ -140,81 +141,114 @@ int main(void)
   Init_LSM();
   gyro_init();
   gyro_set_ctrl_reg4();
- 
+  
   // Calibrate sensors (robot must be stationary and upright)
   Offset_LSM(&lsm);
   gyro_calibrate(&lsm);
- 
+  
   // Start PWM channels for motors
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
- 
- 
+  
+  
   PIDController_Init(&pid);
-  pid.kp = 2.0f;    
-  pid.ki = 0.0f;    
-  pid.kd = 1.5f; 
+  pid.kp = 200.0f;    
+  pid.ki = 0.1f;    
+  pid.kd = 0.65f; 
   pid.sampling_time = dt;
-  HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);   // highest priority
-  HAL_NVIC_SetPriority(TIM4_IRQn, 1, 0);       // lower than SysTick
-  HAL_NVIC_SetPriority(USART2_IRQn, 2, 0);     // lowest - just debugging
-
+  // HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);   // highest priority
+  // HAL_NVIC_SetPriority(TIM4_IRQn, 1, 0);       // lower than SysTick
+  // HAL_NVIC_SetPriority(USART2_IRQn, 2, 0);     // lowest - just debugging
+  
   HAL_TIM_Base_Start_IT(&htim4);
+  
+  
+  
   /* USER CODE END 2 */
-
+  
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    
     /* USER CODE END WHILE */
-
+    
     /* USER CODE BEGIN 3 */
-    //RightMotor_Forward(255);
-    //LeftMotor_Forward(255);
-     
+  }
   /* USER CODE END 3 */
 }
-}
 
+/* USER CODE BEGIN 4 */
+void myPrintf(const char *fmt, ...)
+{
+  char buffer[128]; 
+  va_list argument;
+  va_start(argument, fmt);
+  vsnprintf(buffer, sizeof(buffer), fmt, argument);
+  HAL_UART_Transmit(&huart2, (uint8_t*)buffer, strlen(buffer), 100);
+}
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == TIM4)
     {
         tilt_x = tilt_angle(dt, tilt_x, &lsm);
-        PIDController_Update(&pid, setpoint, tilt_x);
-        myPrintf("tilt angle: %f", tilt_x);
-        int speed = (int)pid.motor_output;
 
-        if (speed > 255)  speed = 255;
-        if (speed < -255) speed = -255;
-
-        if (speed > -10 && speed < 10)
+        // Fall detection
+        if (tilt_x > 45.0f || tilt_x < -45.0f)
         {
             LeftMotor_Stop();
             RightMotor_Stop();
-            return;   // use return instead of continue inside an ISR
+            return;
         }
+
+        PIDController_Update(&pid, setpoint, tilt_x);
+
+        int speed = (int)pid.motor_output;
+        float abs_error = fabsf(setpoint - tilt_x);
+
+        if (speed >  999) speed =  999;
+        if (speed < -999) speed = -999;
+
+        // Stop dithering close to balance point.
+        if (abs_error < 0.4f)
+        {
+          LeftMotor_Stop();
+          RightMotor_Stop();
+          return;
+        }
+
+        // Overcome motor static friction for faster initial response.
+        if (speed > 0 && speed < 120) speed = 120;
+        if (speed < 0 && speed > -120) speed = -120;
+
+        // // Tight dead zone — only ignore if < 0.5° off setpoint
+        // if (speed > -100 && speed < 100)
+        // {
+        //     LeftMotor_Stop();
+        //     RightMotor_Stop();
+        //     return;
+        // }
 
         if (speed > 0)
         {
-            LeftMotor_Forward((uint16_t)speed);
-            RightMotor_Forward((uint16_t)speed);
+          LeftMotor_Forward((uint16_t)speed);
+          RightMotor_Forward((uint16_t)speed);
         }
         else
         {
-            speed = -speed;
-            LeftMotor_Backward((uint16_t)speed);
-            RightMotor_Backward((uint16_t)speed);
+          speed = -speed;
+          LeftMotor_Backward((uint16_t)speed);
+          RightMotor_Backward((uint16_t)speed);
         }
-        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8); // Toggle LED for debugging
+
+        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
     }
 }
+/* USER CODE END 4 */
 /**
-  * @brief System Clock Configuration
-  * @retval None
-  */
+* @brief System Clock Configuration
+* @retval None
+*/
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -655,17 +689,6 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
-/* USER CODE BEGIN 4 */
-void myPrintf(const char *fmt, ...)
-{
-  char buffer[128]; 
-  va_list argument;
-  va_start(argument, fmt);
-  vsnprintf(buffer, sizeof(buffer), fmt, argument);
-  HAL_UART_Transmit(&huart2, (uint8_t*)buffer, strlen(buffer), 100);
-}
-
-/* USER CODE END 4 */
 
 /**
   * @brief  This function is executed in case of error occurrence.

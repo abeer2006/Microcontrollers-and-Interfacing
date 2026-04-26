@@ -9,12 +9,14 @@ typedef struct
 	float kp;
 	float ki;
 	float kd;
+	uint8_t is_first_run;
 
 	float proportional;
 	float integral;
 	float derivative;
 	float prev_error;
 	float motor_output;
+
 } PIDController;
 
 /* Controller functions */
