@@ -178,7 +178,7 @@ float tilt_angle(float dt, float tilt_angle_x, LSM_Data_t* lsm){
     Read_LSM(lsm);
     Read_Gyro(lsm);
 
-    tilt_angle_x = 0.94f * (tilt_angle_x + lsm->gyro_y_dps * dt) + 0.06f * -lsm->angle_x;
+    tilt_angle_x = 0.94f * (tilt_angle_x + lsm->gyro_y_dps * dt) + 0.06f * lsm->angle_x;
     return tilt_angle_x;
 } 
 

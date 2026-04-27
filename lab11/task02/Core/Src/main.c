@@ -18,12 +18,13 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include "motor.h"
 #include "stm32f3xx_hal_i2c.h"
+#include "stm32f3xx_hal_tim.h"
 #include "stm32f3xx_hal_uart.h"
 #include <stdint.h>
 #include <sys/types.h>
@@ -59,6 +60,7 @@ SPI_HandleTypeDef hspi1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
+TIM_HandleTypeDef htim8;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
@@ -77,6 +79,7 @@ static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_TIM8_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -125,7 +128,7 @@ int main(void)
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
-  
+
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_I2C1_Init();
@@ -133,11 +136,15 @@ int main(void)
   MX_USART2_UART_Init();
   MX_TIM2_Init();
   MX_TIM3_Init();
-  MX_USB_DEVICE_Init();
   MX_TIM4_Init();
   MX_SPI1_Init();
+  MX_TIM8_Init();
   /* USER CODE BEGIN 2 */
   // Initialize sensors
+  // HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
+  // HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+
   Init_LSM();
   gyro_init();
   gyro_set_ctrl_reg4();
@@ -152,9 +159,9 @@ int main(void)
   
   
   PIDController_Init(&pid);
-  pid.kp = 200.0f;    
-  pid.ki = 0.1f;    
-  pid.kd = 0.65f; 
+  pid.kp = 15.0f;    
+  pid.ki = 0.05f;    
+  pid.kd = 0.5f; 
   pid.sampling_time = dt;
   // HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);   // highest priority
   // HAL_NVIC_SetPriority(TIM4_IRQn, 1, 0);       // lower than SysTick
@@ -165,90 +172,25 @@ int main(void)
   
   
   /* USER CODE END 2 */
-  
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    //HAL_UART_Transmit(&huart2, (const uint8_t *)"hello", 5, HAL_MAX_DELAY);
+    // LeftMotor_Forward(999);
+    // RightMotor_Forward(999);
     /* USER CODE END WHILE */
-    
+
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
 
-/* USER CODE BEGIN 4 */
-void myPrintf(const char *fmt, ...)
-{
-  char buffer[128]; 
-  va_list argument;
-  va_start(argument, fmt);
-  vsnprintf(buffer, sizeof(buffer), fmt, argument);
-  HAL_UART_Transmit(&huart2, (uint8_t*)buffer, strlen(buffer), 100);
-}
-
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-    if (htim->Instance == TIM4)
-    {
-        tilt_x = tilt_angle(dt, tilt_x, &lsm);
-
-        // Fall detection
-        if (tilt_x > 45.0f || tilt_x < -45.0f)
-        {
-            LeftMotor_Stop();
-            RightMotor_Stop();
-            return;
-        }
-
-        PIDController_Update(&pid, setpoint, tilt_x);
-
-        int speed = (int)pid.motor_output;
-        float abs_error = fabsf(setpoint - tilt_x);
-
-        if (speed >  999) speed =  999;
-        if (speed < -999) speed = -999;
-
-        // Stop dithering close to balance point.
-        if (abs_error < 0.4f)
-        {
-          LeftMotor_Stop();
-          RightMotor_Stop();
-          return;
-        }
-
-        // Overcome motor static friction for faster initial response.
-        if (speed > 0 && speed < 120) speed = 120;
-        if (speed < 0 && speed > -120) speed = -120;
-
-        // // Tight dead zone — only ignore if < 0.5° off setpoint
-        // if (speed > -100 && speed < 100)
-        // {
-        //     LeftMotor_Stop();
-        //     RightMotor_Stop();
-        //     return;
-        // }
-
-        if (speed > 0)
-        {
-          LeftMotor_Forward((uint16_t)speed);
-          RightMotor_Forward((uint16_t)speed);
-        }
-        else
-        {
-          speed = -speed;
-          LeftMotor_Backward((uint16_t)speed);
-          RightMotor_Backward((uint16_t)speed);
-        }
-
-        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
-    }
-}
-/* USER CODE END 4 */
 /**
-* @brief System Clock Configuration
-* @retval None
-*/
+  * @brief System Clock Configuration
+  * @retval None
+  */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -284,12 +226,12 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB|RCC_PERIPHCLK_USART1
-                              |RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_I2C1;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_USART2
+                              |RCC_PERIPHCLK_I2C1|RCC_PERIPHCLK_TIM8;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
   PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
   PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_HSI;
-  PeriphClkInit.USBClockSelection = RCC_USBCLKSOURCE_PLL;
+  PeriphClkInit.Tim8ClockSelection = RCC_TIM8CLK_HCLK;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
@@ -398,15 +340,16 @@ static void MX_TIM2_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
   TIM_IC_InitTypeDef sConfigIC = {0};
 
   /* USER CODE BEGIN TIM2_Init 1 */
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 71;
+  htim2.Init.Prescaler = 479;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 4294967295;
+  htim2.Init.Period = 999;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -415,6 +358,10 @@ static void MX_TIM2_Init(void)
   }
   sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
   if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
   {
     Error_Handler();
   }
@@ -428,14 +375,18 @@ static void MX_TIM2_Init(void)
   {
     Error_Handler();
   }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
   sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
   sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
   sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
   sConfigIC.ICFilter = 0;
-  if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
   if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
@@ -443,6 +394,7 @@ static void MX_TIM2_Init(void)
   /* USER CODE BEGIN TIM2_Init 2 */
 
   /* USER CODE END TIM2_Init 2 */
+  HAL_TIM_MspPostInit(&htim2);
 
 }
 
@@ -523,14 +475,15 @@ static void MX_TIM4_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
 
   /* USER CODE BEGIN TIM4_Init 1 */
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 479;
+  htim4.Init.Prescaler = 47;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 999;
+  htim4.Init.Period = 9999;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
@@ -542,15 +495,80 @@ static void MX_TIM4_Init(void)
   {
     Error_Handler();
   }
+  if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 500;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.Pulse = 0;
+  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE BEGIN TIM4_Init 2 */
 
   /* USER CODE END TIM4_Init 2 */
+  HAL_TIM_MspPostInit(&htim4);
+
+}
+
+/**
+  * @brief TIM8 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM8_Init(void)
+{
+
+  /* USER CODE BEGIN TIM8_Init 0 */
+
+  /* USER CODE END TIM8_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM8_Init 1 */
+
+  /* USER CODE END TIM8_Init 1 */
+  htim8.Instance = TIM8;
+  htim8.Init.Prescaler = 0;
+  htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim8.Init.Period = 65535;
+  htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim8.Init.RepetitionCounter = 0;
+  htim8.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim8, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim8, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM8_Init 2 */
+
+  /* USER CODE END TIM8_Init 2 */
 
 }
 
@@ -684,11 +702,94 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : DM_Pin */
+  GPIO_InitStruct.Pin = DM_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF14_USB;
+  HAL_GPIO_Init(DM_GPIO_Port, &GPIO_InitStruct);
+
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
+/* USER CODE BEGIN 4 */
+void myPrintf(const char *fmt, ...)
+{
+  char buffer[128]; 
+  va_list argument;
+  va_start(argument, fmt);
+  vsnprintf(buffer, sizeof(buffer), fmt, argument);
+  HAL_UART_Transmit(&huart2, (uint8_t*)buffer, strlen(buffer), 100);
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == TIM4)
+    {
+        tilt_x = tilt_angle(dt, tilt_x, &lsm);
+        /* ADD THIS — print every 10 ticks = 10 Hz to avoid UART flooding */
+        static int print_cnt = 0;
+        print_cnt++;
+        if (print_cnt >= 10) {
+            print_cnt = 0;
+            int spd = (int)pid.motor_output;
+            myPrintf("tilt=%.2f out=%d\r\n", tilt_x, spd);
+        }
+        // Fall detection
+        if (tilt_x > 45.0f || tilt_x < -45.0f)
+        {
+            LeftMotor_Stop();
+            RightMotor_Stop();
+            return;
+        }
+
+        PIDController_Update(&pid, setpoint, tilt_x);
+
+        int speed = (int)pid.motor_output;
+        float abs_error = fabsf(setpoint - tilt_x);
+
+        if (speed >  999) speed =  999;
+        if (speed < -999) speed = -999;
+
+        // Stop dithering close to balance point.
+        if (abs_error < 0.4f)
+        {
+          LeftMotor_Stop();
+          RightMotor_Stop();
+          return;
+        }
+
+        // Overcome motor static friction for faster initial response.
+        if (speed > 0 && speed < 120) speed = 120;
+        if (speed < 0 && speed > -120) speed = -120;
+
+        // // Tight dead zone — only ignore if < 0.5° off setpoint
+        // if (speed > -100 && speed < 100)
+        // {
+        //     LeftMotor_Stop();
+        //     RightMotor_Stop();
+        //     return;
+        // }
+
+        if (speed > 0)
+        {
+          LeftMotor_Forward((uint16_t)speed);
+          RightMotor_Forward((uint16_t)speed);
+        }
+        else
+        {
+          speed = -speed;
+          LeftMotor_Backward((uint16_t)speed);
+          RightMotor_Backward((uint16_t)speed);
+        }
+
+        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
+    }
+}
+/* USER CODE END 4 */
 
 /**
   * @brief  This function is executed in case of error occurrence.
