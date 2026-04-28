@@ -60,8 +60,8 @@ void PIDController_Update(PIDController *controller, float setpoint, float imu_r
     controller->proportional = controller->kp * error;
 
     controller->integral += controller->ki * error * controller->sampling_time;
-    if (controller->integral >  100.0f) controller->integral =  100.0f;
-    if (controller->integral < -100.0f) controller->integral = -100.0f;
+    if (controller->integral >  50.0f) controller->integral =  50.0f;
+    if (controller->integral < -50.0f) controller->integral = -50.0f;
 
     // Skip derivative on first run to avoid the initial spike
     if (controller->is_first_run)

@@ -159,9 +159,9 @@ int main(void)
   
   
   PIDController_Init(&pid);
-  pid.kp = 15.0f;    
-  pid.ki = 0.05f;    
-  pid.kd = 0.5f; 
+  pid.kp = 75.0f;    
+  pid.ki = 0.002f;    
+  pid.kd = 4.0f; 
   pid.sampling_time = dt;
   // HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);   // highest priority
   // HAL_NVIC_SetPriority(TIM4_IRQn, 1, 0);       // lower than SysTick
@@ -169,14 +169,15 @@ int main(void)
   
   HAL_TIM_Base_Start_IT(&htim4);
   
-  
-  
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    // tilt_x = tilt_angle(dt, tilt_x, &lsm);
+    // myPrintf("tilt angle: %f\r\n", tilt_x);
+    // HAL_Delay(100);
     //HAL_UART_Transmit(&huart2, (const uint8_t *)"hello", 5, HAL_MAX_DELAY);
     // LeftMotor_Forward(999);
     // RightMotor_Forward(999);
@@ -186,6 +187,76 @@ int main(void)
   }
   /* USER CODE END 3 */
 }
+
+
+
+/* USER CODE BEGIN 4 */
+void myPrintf(const char *fmt, ...)
+{
+  char buffer[128]; 
+  va_list argument;
+  va_start(argument, fmt);
+  vsnprintf(buffer, sizeof(buffer), fmt, argument);
+  HAL_UART_Transmit(&huart2, (uint8_t*)buffer, strlen(buffer), 100);
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == TIM4)
+    {
+        tilt_x = tilt_angle(dt, tilt_x, &lsm);
+        // Fall detection
+        if (tilt_x > 15.0f || tilt_x < -15.0f)
+        {
+            LeftMotor_Stop();
+            RightMotor_Stop();
+            return;
+        }
+
+        PIDController_Update(&pid, setpoint, tilt_x);
+
+        int speed = (int)pid.motor_output;
+        float abs_error = fabsf(setpoint - tilt_x);
+
+        if (speed >  999) speed =  999;
+        if (speed < -999) speed = -999;
+
+        // Stop dithering close to balance point.
+        if (abs_error < 0.5f)
+        {
+          LeftMotor_Stop();
+          RightMotor_Stop();
+          return;
+        }
+
+        // Overcome motor static friction for faster initial response.
+        if (speed > 0 && speed < 80) speed = 80;
+        if (speed < 0 && speed > -80) speed = -80;
+
+        // // Tight dead zone — only ignore if < 0.5° off setpoint
+        // if (speed > -100 && speed < 100)
+        // {
+        //     LeftMotor_Stop();
+        //     RightMotor_Stop();
+        //     return;
+        // }
+
+        if (speed > 0)
+        {
+          LeftMotor_Forward((uint16_t)speed);
+          RightMotor_Forward((uint16_t)speed);
+        }
+        else
+        {
+          speed = -speed;
+          LeftMotor_Backward((uint16_t)speed);
+          RightMotor_Backward((uint16_t)speed);
+        }
+
+        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
+    }
+}
+/* USER CODE END 4 */
 
 /**
   * @brief System Clock Configuration
@@ -715,81 +786,6 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
-/* USER CODE BEGIN 4 */
-void myPrintf(const char *fmt, ...)
-{
-  char buffer[128]; 
-  va_list argument;
-  va_start(argument, fmt);
-  vsnprintf(buffer, sizeof(buffer), fmt, argument);
-  HAL_UART_Transmit(&huart2, (uint8_t*)buffer, strlen(buffer), 100);
-}
-
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-    if (htim->Instance == TIM4)
-    {
-        tilt_x = tilt_angle(dt, tilt_x, &lsm);
-        /* ADD THIS — print every 10 ticks = 10 Hz to avoid UART flooding */
-        static int print_cnt = 0;
-        print_cnt++;
-        if (print_cnt >= 10) {
-            print_cnt = 0;
-            int spd = (int)pid.motor_output;
-            myPrintf("tilt=%.2f out=%d\r\n", tilt_x, spd);
-        }
-        // Fall detection
-        if (tilt_x > 45.0f || tilt_x < -45.0f)
-        {
-            LeftMotor_Stop();
-            RightMotor_Stop();
-            return;
-        }
-
-        PIDController_Update(&pid, setpoint, tilt_x);
-
-        int speed = (int)pid.motor_output;
-        float abs_error = fabsf(setpoint - tilt_x);
-
-        if (speed >  999) speed =  999;
-        if (speed < -999) speed = -999;
-
-        // Stop dithering close to balance point.
-        if (abs_error < 0.4f)
-        {
-          LeftMotor_Stop();
-          RightMotor_Stop();
-          return;
-        }
-
-        // Overcome motor static friction for faster initial response.
-        if (speed > 0 && speed < 120) speed = 120;
-        if (speed < 0 && speed > -120) speed = -120;
-
-        // // Tight dead zone — only ignore if < 0.5° off setpoint
-        // if (speed > -100 && speed < 100)
-        // {
-        //     LeftMotor_Stop();
-        //     RightMotor_Stop();
-        //     return;
-        // }
-
-        if (speed > 0)
-        {
-          LeftMotor_Forward((uint16_t)speed);
-          RightMotor_Forward((uint16_t)speed);
-        }
-        else
-        {
-          speed = -speed;
-          LeftMotor_Backward((uint16_t)speed);
-          RightMotor_Backward((uint16_t)speed);
-        }
-
-        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
-    }
-}
-/* USER CODE END 4 */
 
 /**
   * @brief  This function is executed in case of error occurrence.
